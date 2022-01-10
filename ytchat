@@ -1,0 +1,203 @@
+#!/usr/bin/env python3
+import re, sys, json, time, threading, curses, requests
+
+msgFormat = '{author} {badges}| {msg}'
+badgesFormat = '[{badge}] '
+spacingFormat = '\n'
+
+showMsg = True
+showAuthor = True
+showBadges = True
+showBanner = True
+showWarning = True
+
+showBadgedOnly = False
+showMemberOnly = False # args when this or this \/ autoset badgedOnly
+showBadgedNotMemberOnly = False
+
+timestamp = 0
+ytKey = 'AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8'
+chatUrl = 'https://www.youtube.com/live_chat?v={}'
+msgUrl = 'https://www.youtube.com/youtubei/v1/live_chat/send_message?key={}'.format(ytKey)
+contChatUrl = 'https://www.youtube.com/youtubei/v1/live_chat/get_live_chat?key={}'.format(ytKey)
+ytUrlRgx = '^(?:https?:)?//[^/]*(?:youtube(?:-nocookie)?\.com|youtu\.be).*[=/]([-\\w]{11})(?:\\?|=|&|$)'
+postData = '{{"context":{{"client":{{"hl":"en","gl":"US","clientName":"WEB","clientVersion":"2.20211221.00.00"}}}},"continuation":"{}"}}'
+msgHeaders={'User-Agent':'Firefox/100','Authorization': 'SAPISIDHASH 1641299520_151984bf767826c38957b10505d354c42fb0aed0','X-Goog-AuthUser': '2','Origin': 'https://www.youtube.com','Cookie': 'VISITOR_INFO1_LIVE=3WuA5Llspl0; PREF=tz=UTC&gl=US&f6=400&f5=20000; SID=FggjwoapweMUy4gtiek7RYXtm9pWdzW1VgkYSVGrib84mJ2tafy-ArGpnHfrZqG3HBVY-g.; __Secure-1PSID=FggjwoapweMUy4gtiek7RYXtm9pWdzW1VgkYSVGrib84mJ2tDe7kqjbBuFydCdCp5mnL1g.; __Secure-3PSID=FggjwoapweMUy4gtiek7RYXtm9pWdzW1VgkYSVGrib84mJ2ta7GjVysBL9MZT0BykEYt5A.; HSID=ANFP1f-apZ_pDNnBo; SSID=AoMF8GPRzyXvVRriM; APISID=Oh9MOa7GC1eXaaiS/AElP75BYvg9-8Dl1V; SAPISID=mEiqE0u2oIdSZy-X/ANzuqQdKuRGGdRBBK; __Secure-1PAPISID=mEiqE0u2oIdSZy-X/ANzuqQdKuRGGdRBBK; __Secure-3PAPISID=mEiqE0u2oIdSZy-X/ANzuqQdKuRGGdRBBK; LOGIN_INFO=AFmmF2swRQIgfcmsJaNhc_sQlCKYx23CM0hgOCh63sspUz4-pwxB-KsCIQCPhkXbectNNlWsjDu7sP3VTcPS3LnLfG7N72YfdgeVRg:QUQ3MjNmd1BPUXJIVFB0WkhoVkw2R051QlNDeUhfVTIyTUpCZFdydV9jYWlZaEVROWlUNnp3X1ZMNkplZzhKNWNSbXRfUG1sUXZrbTF2bnNoN0IxcnRqeXJyMmhIOGhzaG5qeTA1Mm9zQlE4ZVpCOG5OVHk1ald3eGlSWUNBbHo5VmtiUXNXQklsdWNLZ0N2cmduWnNpZ1A2cWJ0VW1uOHVB; SIDCC=AJi4QfGr3htfnQAQ2G9VXELZRFBmqetpRUBX5Opbv9W7aBl69Hr1-sF-QdnGjwPfUoN-9ptu-Js; __Secure-3PSIDCC=AJi4QfHi4Qs5ZasCYqo3JkCbbBUs9ljIb-oxZDn2qJaIA-vYUBwKfc_jK7d2v4adtuJeG9UZcCA; YSC=u6zO_ijHnJA'}
+msgData = '{{"context": {{"client": {{"clientName": "WEB","clientVersion": "2.20211221.00.00"}}}},"params": "{}","richMessage": {{"textSegments": [{{"text": "{}"}}]}}}}'
+
+Sleep = lambda i:time.sleep(i)
+
+def Help(): # add location options no postData e add option to ignore timespamp delay
+    print('W') # https://www.youtube.com/youtubei/v1/live_chat/send_message?key=
+
+def Request(url, cont='', msg=''): # change?
+    if msg:
+        return requests.post(url,headers=msgHeaders,data=msg).status_code
+    if cont:
+        return requests.post(contChatUrl,postData.format(cont)).text
+    return requests.get(url, headers=msgHeaders).text
+
+def J(j, opt):
+    return {
+        'x': lambda j:j['text'],
+        'a': lambda j:j['actions'],
+        't': lambda j:j['timeoutMs'],
+        'c': lambda j:j['continuation'],
+        'u': lambda j:j['authorBadges'],
+        'o': lambda j:j['timestampUsec'],
+        'r': lambda j:j['message']['runs'],
+        'e': lambda j:j['emoji']['emojiId'],
+        'd': lambda j:j['continuations'][0],
+        'i': lambda j:j['timedContinuationData'],
+        'n': lambda j:j['authorName']['simpleText'],
+        'l': lambda j:j['addChatItemAction']['item'],
+        'h': lambda j:j['liveChatTextMessageRenderer'],
+        'f': lambda j:j['contents']['liveChatRenderer'],
+        'k': lambda j:j['invalidationContinuationData'],
+        'w': lambda j:j['liveChatAuthorBadgeRenderer']['tooltip'],
+        'z': lambda j:j['reloadContinuationData']['continuation'],
+        'g': lambda j:j['liveChatViewerEngagementMessageRenderer'],
+        's': lambda j:j['addLiveChatTickerItemAction']['durationSec'],
+        'v': lambda j:j['continuationContents']['liveChatContinuation'],
+        'b': lambda j:j['addBannerToLiveChatCommand']['bannerRenderer']['liveChatBannerRenderer']['contents']['liveChatTextMessageRenderer']['message']['runs'],
+        'p': lambda j:j['actionPanel']['liveChatMessageInputRenderer']['sendButton']['buttonRenderer']['serviceEndpoint']['sendLiveChatMessageEndpoint']['params']
+    }.get(opt)(j)
+
+def InitialData(url):
+    html = Request(url)
+    start = html.find('ytInitialData') + 18
+    end = html.find('};', start)
+    return json.loads(html[start:end] + '}')
+
+def Msg(item):
+    key = list(item.keys())[0]
+    return {
+        'text': lambda i:J(i,'x'),
+        'emoji': lambda i:re.sub(r'^UC+\S+', '⬚', J(i,'e'))
+    }.get(key)(item)
+
+def Id(url):
+    try:
+        return re.findall(ytUrlRgx, url)[0]
+    except:
+        print("invalid url blabla")
+
+def ChatItem(item):
+    key = ''
+    try:
+        key = list(item.keys())[1]
+    except:
+        key = list(item.keys())[0]
+    msg = ''
+    match key: # if to support < 3.10?
+        case 'addBannerToLiveChatCommand':
+            if not showBanner:
+                return ''
+            for item2 in J(item,'b'):
+                msg = msg + Msg(item2)
+            return msg + spacingFormat + '\n'
+        case 'addChatItemAction':
+            item = J(item,'l')
+            key = list(item.keys())[0]
+            if key == 'liveChatViewerEngagementMessageRenderer' and showWarning:
+                return J(J(J(item,'g'),'r')[0],'x') + spacingFormat + '\n'
+            elif key == 'liveChatTextMessageRenderer':
+                item = J(item,'h')
+                author = J(item,'n')
+                badges = ''
+                try:
+                    for badge in J(item,'u'):
+                        badges = badges + badgesFormat.format(badge=J(badge,'w'))
+                    if showMemberOnly and 'Member' not in badges:
+                        return ''
+                    if showBadgedNotMemberOnly and 'Member' in badges:
+                        return ''
+                except:
+                    if showBadgedOnly: return ''
+                for item2 in J(item,'r'):
+                    msg = msg + Msg(item2)
+                return msgFormat.format(author=author if showAuthor else '', badges=badges if showBadges else '', msg=msg if showMsg else '') + spacingFormat + '\n'
+            else:
+                return ''
+        case 'showLiveChatActionPanelAction':
+            return item
+        case 'liveChatViewerEngagementMessageRenderer':
+            return item
+        case 'showLiveChatTooltipCommand':
+            return ''
+        case 'updateLiveChatPollAction':
+            return '' # for now
+        case 'markChatItemAsDeletedAction':
+            return ''
+        case 'markChatItemsByAuthorAsDeletedAction':
+            return ''
+        case _:
+            return item
+        # maybe not line spacing all but all in the end here
+
+def SendMsg(args):
+    id = Id(args[0])
+    url = chatUrl.format(id)
+    json_ = InitialData(url)
+    params = J(J(json_,'f'),'p')
+    Request(msgUrl,'',msgData.format(params,args[1]))
+
+def Curses():
+    print()
+
+def Main():
+    id = Id(sys.argv[1])
+    url = chatUrl.format(id)
+    json_ = InitialData(url)
+    timeout = ''
+    cont = ''
+    try: # maybe change to not use try except
+        j = J(J(J(json_,'f'),'d'),'i')
+        timeout = J(j,'t')
+        cont = J(j,'c')
+    except:
+        j = J(J(J(json_,'f'),'d'),'k')
+        timeout = J(j,'t')
+        cont = J(j,'c')
+    for item in J(J(json_,'f'),'a'):
+        print(ChatItem(item), end='')
+
+    while True:
+        request = Request(url,cont)
+        json_ = json.loads(request)
+        timeout = ''
+        cont = ''
+        try:
+            j = J(J(J(json_,'v'),'d'),'i')
+            timeout = J(j,'t')
+            cont = J(j,'c')
+        except: # add types of exceptions
+            j = J(J(J(json_,'v'),'d'),'k')
+            timeout = J(j,'t')
+            cont = J(j,'c')
+        actions = ''
+        try:
+            actions = J(J(json_,'v'),'a')
+        except:
+            time.sleep(timeout/1000) # change to check entry not try except the entry is like k
+            continue
+        timeout = timeout/1000
+        delay = timeout/len(actions)
+        td = threading.Thread(target=Sleep, args=(timeout,))
+        td.start()
+        for item in actions:
+            print(ChatItem(item), end='')
+            time.sleep(delay) # add option to ignore this
+        td.join()
+
+if __name__ == '__main__' and len(sys.argv) > 1:
+    #curses.wrapper(Main)
+    if len(sys.argv) > 2:
+        SendMsg(sys.argv[1:])
+    else:
+        try:
+            Main()
+        except KeyboardInterrupt:
+            sys.exit()
+else:
+    Help()
