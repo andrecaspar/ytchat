@@ -1,21 +1,27 @@
 #!/usr/bin/env python3
 import re, sys, json, time, threading, curses, requests
+from colorama import Fore, Back, Style
 
 msgFormat = '{author} {badges}| {msg}'
 badgesFormat = '[{badge}] '
 spacingFormat = '\n'
+nick = 'zsadroh'
+
+# ANSI Colors available BLACK, RED, GREEN, YELLOW, BLUE, MAGENTA, CYAN, WHITE
+# test DIM, NORMAL, BRIGHT
 
 showMsg = True
+showPoll = True
 showAuthor = True
 showBadges = True
 showBanner = True
 showWarning = True
 
+
 showBadgedOnly = False
 showMemberOnly = False # args when this or this \/ autoset badgedOnly
 showBadgedNotMemberOnly = False
 
-timestamp = 0
 ytKey = 'AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8'
 chatUrl = 'https://www.youtube.com/live_chat?v={}'
 msgUrl = 'https://www.youtube.com/youtubei/v1/live_chat/send_message?key={}'.format(ytKey)
@@ -27,10 +33,10 @@ msgData = '{{"context": {{"client": {{"clientName": "WEB","clientVersion": "2.20
 
 Sleep = lambda i:time.sleep(i)
 
-def Help(): # add location options no postData e add option to ignore timespamp delay
-    print('W') # https://www.youtube.com/youtubei/v1/live_chat/send_message?key=
+def Help():
+    print('W')
 
-def Request(url, cont='', msg=''): # change?
+def Request(url, cont='', msg=''):
     if msg:
         return requests.post(url,headers=msgHeaders,data=msg).status_code
     if cont:
@@ -40,25 +46,30 @@ def Request(url, cont='', msg=''): # change?
 def J(j, opt):
     return {
         'x': lambda j:j['text'],
+        'q': lambda j:j['choices'],
         'a': lambda j:j['actions'],
         't': lambda j:j['timeoutMs'],
         'c': lambda j:j['continuation'],
         'u': lambda j:j['authorBadges'],
+        '0': lambda j:j['text']['runs'],
         'o': lambda j:j['timestampUsec'],
         'r': lambda j:j['message']['runs'],
         'e': lambda j:j['emoji']['emojiId'],
         'd': lambda j:j['continuations'][0],
+        'Q': lambda j:j['pollQuestion']['runs'],
         'i': lambda j:j['timedContinuationData'],
         'n': lambda j:j['authorName']['simpleText'],
         'l': lambda j:j['addChatItemAction']['item'],
         'h': lambda j:j['liveChatTextMessageRenderer'],
+        'j': lambda j:j['header']['pollHeaderRenderer'],
         'f': lambda j:j['contents']['liveChatRenderer'],
-        'k': lambda j:j['invalidationContinuationData'],
+        'I': lambda j:j['invalidationContinuationData'],
         'w': lambda j:j['liveChatAuthorBadgeRenderer']['tooltip'],
         'z': lambda j:j['reloadContinuationData']['continuation'],
         'g': lambda j:j['liveChatViewerEngagementMessageRenderer'],
         's': lambda j:j['addLiveChatTickerItemAction']['durationSec'],
         'v': lambda j:j['continuationContents']['liveChatContinuation'],
+        'k': lambda j:j['showLiveChatActionPanelAction']['panelToShow']['liveChatActionPanelRenderer']['contents']['pollRenderer'],
         'b': lambda j:j['addBannerToLiveChatCommand']['bannerRenderer']['liveChatBannerRenderer']['contents']['liveChatTextMessageRenderer']['message']['runs'],
         'p': lambda j:j['actionPanel']['liveChatMessageInputRenderer']['sendButton']['buttonRenderer']['serviceEndpoint']['sendLiveChatMessageEndpoint']['params']
     }.get(opt)(j)
@@ -73,7 +84,7 @@ def Msg(item):
     key = list(item.keys())[0]
     return {
         'text': lambda i:J(i,'x'),
-        'emoji': lambda i:re.sub(r'^UC+\S+', '⬚', J(i,'e'))
+        'emoji': lambda i:re.sub(r'^UC+\S+','⬚', J(i,'e'))
     }.get(key)(item)
 
 def Id(url):
@@ -84,8 +95,7 @@ def Id(url):
 
 def ChatItem(item):
     key = ''
-    try:
-        key = list(item.keys())[1]
+    try: key = list(item.keys())[1]
     except:
         key = list(item.keys())[0]
     msg = ''
@@ -116,11 +126,22 @@ def ChatItem(item):
                     if showBadgedOnly: return ''
                 for item2 in J(item,'r'):
                     msg = msg + Msg(item2)
-                return msgFormat.format(author=author if showAuthor else '', badges=badges if showBadges else '', msg=msg if showMsg else '') + spacingFormat + '\n'
+                msg =  msgFormat.format(author=author if showAuthor else '', badges=badges if showBadges else '', msg=msg if showMsg else '') + spacingFormat + '\n'
+                return msg.replace('@'+nick, Style.BRIGHT + Back.RED + '@'+nick + Style.RESET_ALL) # regex and hastah support
             else:
                 return ''
         case 'showLiveChatActionPanelAction':
-            return item
+            item = J(item,'k')
+            entry = ''
+            for item2 in J(J(item,'j'),'Q'):
+                entry = entry + Msg(item2)
+            entry = entry + '\n'
+            for item2 in J(item,'q'):
+                string = ''
+                for i in J(item2,'0'):
+                    string = string + Msg(i)
+                entry = entry + string + '\n'
+            return entry
         case 'liveChatViewerEngagementMessageRenderer':
             return item
         case 'showLiveChatTooltipCommand':
@@ -149,40 +170,39 @@ def Main():
     id = Id(sys.argv[1])
     url = chatUrl.format(id)
     json_ = InitialData(url)
-    timeout = ''
-    cont = ''
-    try: # maybe change to not use try except
+    j = ''
+    try:
         j = J(J(J(json_,'f'),'d'),'i')
-        timeout = J(j,'t')
-        cont = J(j,'c')
-    except:
-        j = J(J(J(json_,'f'),'d'),'k')
-        timeout = J(j,'t')
-        cont = J(j,'c')
+    except KeyError:
+        j = J(J(J(json_,'f'),'d'),'I')
+    timeout = J(j,'t')
+    cont = J(j,'c')
     for item in J(J(json_,'f'),'a'):
         print(ChatItem(item), end='')
 
     while True:
         request = Request(url,cont)
         json_ = json.loads(request)
-        timeout = ''
-        cont = ''
+
+        j = ''
         try:
             j = J(J(J(json_,'v'),'d'),'i')
-            timeout = J(j,'t')
-            cont = J(j,'c')
-        except: # add types of exceptions
-            j = J(J(J(json_,'v'),'d'),'k')
-            timeout = J(j,'t')
-            cont = J(j,'c')
+        except KeyError:
+            j = J(J(J(json_,'v'),'d'),'I')
+
         actions = ''
         try:
             actions = J(J(json_,'v'),'a')
-        except:
-            time.sleep(timeout/1000) # change to check entry not try except the entry is like k
+        except KeyError:
+            time.sleep(timeout/1000)
             continue
+
+        cont = J(j,'c')
+
+        timeout = J(j,'t')
         timeout = timeout/1000
         delay = timeout/len(actions)
+
         td = threading.Thread(target=Sleep, args=(timeout,))
         td.start()
         for item in actions:
