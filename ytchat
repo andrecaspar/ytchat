@@ -7,7 +7,10 @@ badgesFormat = '[{badge}] '
 spacingFormat = '\n'
 nick = 'zsadroh'
 
-# ANSI Colors available BLACK, RED, GREEN, YELLOW, BLUE, MAGENTA, CYAN, WHITE
+# ANSI Colors available: BLACK, RED, GREEN, YELLOW, BLUE, MAGENTA, CYAN, WHITE
+membersNameColor = Fore.GREEN
+modNameColor = Fore.BLUE
+
 # test DIM, NORMAL, BRIGHT
 
 showMsg = True
@@ -16,7 +19,6 @@ showAuthor = True
 showBadges = True
 showBanner = True
 showWarning = True
-
 
 showBadgedOnly = False
 showMemberOnly = False # args when this or this \/ autoset badgedOnly
@@ -124,6 +126,12 @@ def ChatItem(item):
                         return ''
                 except:
                     if showBadgedOnly: return ''
+
+                if 'Member' in badges:
+                    author = membersNameColor + author + Style.RESET_ALL
+                if 'Mod' in badges:
+                    author = modNameColor + author + Style.RESET_ALL
+
                 for item2 in J(item,'r'):
                     msg = msg + Msg(item2)
                 msg =  msgFormat.format(author=author if showAuthor else '', badges=badges if showBadges else '', msg=msg if showMsg else '') + spacingFormat + '\n'
