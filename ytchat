@@ -7,11 +7,9 @@ badgesFormat = '[{badge}] '
 spacingFormat = '\n'
 nick = 'zsadroh'
 
-# ANSI Colors available: BLACK, RED, GREEN, YELLOW, BLUE, MAGENTA, CYAN, WHITE
 membersNameColor = Fore.GREEN
 modNameColor = Fore.BLUE
-
-# test DIM, NORMAL, BRIGHT
+msgColor = Fore.WHITE
 
 showMsg = True
 showPoll = True
@@ -93,7 +91,7 @@ def Id(url):
     try:
         return re.findall(ytUrlRgx, url)[0]
     except:
-        print("invalid url blabla")
+        print("Error: Invalid URL.")
 
 def ChatItem(item):
     key = ''
@@ -134,7 +132,7 @@ def ChatItem(item):
 
                 for item2 in J(item,'r'):
                     msg = msg + Msg(item2)
-                msg =  msgFormat.format(author=author if showAuthor else '', badges=badges if showBadges else '', msg=msg if showMsg else '') + spacingFormat + '\n'
+                msg =  msgFormat.format(author=author if showAuthor else '', badges=badges if showBadges else '', msg=msgColor+msg+Style.RESET_ALL if showMsg else '') + spacingFormat + '\n'
                 return msg.replace('@'+nick, Style.BRIGHT + Back.RED + '@'+nick + Style.RESET_ALL) # regex and hastah support
             else:
                 return ''
@@ -215,7 +213,7 @@ def Main():
         td.start()
         for item in actions:
             print(ChatItem(item), end='')
-            time.sleep(delay) # add option to ignore this
+            time.sleep(delay) # add option to ignore this?
         td.join()
 
 if __name__ == '__main__' and len(sys.argv) > 1:
