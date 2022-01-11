@@ -80,7 +80,15 @@ def InitialData(url):
     end = html.find('};', start)
     return json.loads(html[start:end] + '}')
 
-def Msg(item):
+def ContinuationData(i,json):
+    j = J(J(json,i),'d')
+    if list(j.keys())[0] == 'invalidationContinuationData':
+        j = J(j,'I')
+    else:
+        j = J(j,'i')
+    return j
+
+def Content(item):
     key = list(item.keys())[0]
     return {
         'text': lambda i:J(i,'x'),
@@ -93,74 +101,84 @@ def Id(url):
     except:
         print("Error: Invalid URL.")
 
-def ChatItem(item):
-    key = ''
-    try: key = list(item.keys())[1]
-    except:
-        key = list(item.keys())[0]
+def Banner(item):
+    if not showBanner:
+        return ''
     msg = ''
+    for part in J(item,'b'):
+        msg = msg + Content(part)
+    return msg + spacingFormat + '\n'
+
+def Pool(item):
+    entry = ''
+    for part in J(J(item,'j'),'Q'):
+        entry = entry + Content(part)
+    entry = entry + '\n'
+    for part in J(item,'q'):
+        string = ''
+        for i in J(part,'0'):
+            string = string + Content(i)
+        entry = entry + string + '\n'
+    return entry
+
+def Msg(item):
+    key = list(item.keys())[0]
+    if key == 'liveChatViewerEngagementMessageRenderer' and showWarning:
+        return J(J(J(item,'g'),'r')[0],'x') + spacingFormat + '\n'
+    elif key == 'liveChatTextMessageRenderer':
+        item = J(item,'h')
+        author = J(item,'n')
+
+        badges = ''
+        try:
+            for badge in J(item,'u'):
+                badges = badges + badgesFormat.format(badge=J(badge,'w'))
+            if showMemberOnly and 'Member' not in badges:
+                return ''
+            if showBadgedNotMemberOnly and 'Member' in badges:
+                return ''
+        except KeyError:
+            if showBadgedOnly: return ''
+
+        if 'Member' in badges:
+            author = membersNameColor + author + Style.RESET_ALL
+        if 'Mod' in badges:
+            author = modNameColor + author + Style.RESET_ALL
+
+        msg = ''
+        for part in J(item,'r'):
+            msg = msg + Content(part)
+        msg = msgColor + msg + Style.RESET_ALL
+        msg =  msgFormat.format(author=author if showAuthor else '',badges=badges if showBadges else '',msg=msg if showMsg else '')
+        msg = msg.replace('@'+nick, Style.BRIGHT + Back.RED + '@'+nick + Style.RESET_ALL) + spacingFormat + '\n'
+
+        return msg # regex and hashtag support
+    else:
+        return ''
+
+def ChatItem(item): # TODO
+    key = list(item.keys())[0]
+    if key == 'clickTrackingParams':
+        key = list(item.keys())[1]
     match key: # if to support < 3.10?
         case 'addBannerToLiveChatCommand':
-            if not showBanner:
-                return ''
-            for item2 in J(item,'b'):
-                msg = msg + Msg(item2)
-            return msg + spacingFormat + '\n'
+            return Banner(item)
         case 'addChatItemAction':
-            item = J(item,'l')
-            key = list(item.keys())[0]
-            if key == 'liveChatViewerEngagementMessageRenderer' and showWarning:
-                return J(J(J(item,'g'),'r')[0],'x') + spacingFormat + '\n'
-            elif key == 'liveChatTextMessageRenderer':
-                item = J(item,'h')
-                author = J(item,'n')
-                badges = ''
-                try:
-                    for badge in J(item,'u'):
-                        badges = badges + badgesFormat.format(badge=J(badge,'w'))
-                    if showMemberOnly and 'Member' not in badges:
-                        return ''
-                    if showBadgedNotMemberOnly and 'Member' in badges:
-                        return ''
-                except:
-                    if showBadgedOnly: return ''
-
-                if 'Member' in badges:
-                    author = membersNameColor + author + Style.RESET_ALL
-                if 'Mod' in badges:
-                    author = modNameColor + author + Style.RESET_ALL
-
-                for item2 in J(item,'r'):
-                    msg = msg + Msg(item2)
-                msg =  msgFormat.format(author=author if showAuthor else '', badges=badges if showBadges else '', msg=msgColor+msg+Style.RESET_ALL if showMsg else '') + spacingFormat + '\n'
-                return msg.replace('@'+nick, Style.BRIGHT + Back.RED + '@'+nick + Style.RESET_ALL) # regex and hastah support
-            else:
-                return ''
+            return Msg(J(item,'l'))
         case 'showLiveChatActionPanelAction':
-            item = J(item,'k')
-            entry = ''
-            for item2 in J(J(item,'j'),'Q'):
-                entry = entry + Msg(item2)
-            entry = entry + '\n'
-            for item2 in J(item,'q'):
-                string = ''
-                for i in J(item2,'0'):
-                    string = string + Msg(i)
-                entry = entry + string + '\n'
-            return entry
+            return Pool(J(item,'k'))
         case 'liveChatViewerEngagementMessageRenderer':
             return item
         case 'showLiveChatTooltipCommand':
             return ''
         case 'updateLiveChatPollAction':
-            return '' # for now
+            return ''
         case 'markChatItemAsDeletedAction':
             return ''
         case 'markChatItemsByAuthorAsDeletedAction':
             return ''
         case _:
             return item
-        # maybe not line spacing all but all in the end here
 
 def SendMsg(args):
     id = Id(args[0])
@@ -176,39 +194,30 @@ def Main():
     id = Id(sys.argv[1])
     url = chatUrl.format(id)
     json_ = InitialData(url)
-    j = ''
-    try:
-        j = J(J(J(json_,'f'),'d'),'i')
-    except KeyError:
-        j = J(J(J(json_,'f'),'d'),'I')
-    timeout = J(j,'t')
+
+    j = ContinuationData('f',json_)
     cont = J(j,'c')
+
     for item in J(J(json_,'f'),'a'):
         print(ChatItem(item), end='')
 
     while True:
         request = Request(url,cont)
         json_ = json.loads(request)
-
-        j = ''
-        try:
-            j = J(J(J(json_,'v'),'d'),'i')
-        except KeyError:
-            j = J(J(J(json_,'v'),'d'),'I')
-
         actions = ''
+        timeout = J(j,'t')
+        timeout = timeout/1000
+
+        j = ContinuationData('v',json_)
+        cont = J(j,'c')
+
         try:
             actions = J(J(json_,'v'),'a')
         except KeyError:
-            time.sleep(timeout/1000)
+            time.sleep(timeout)
             continue
 
-        cont = J(j,'c')
-
-        timeout = J(j,'t')
-        timeout = timeout/1000
         delay = timeout/len(actions)
-
         td = threading.Thread(target=Sleep, args=(timeout,))
         td.start()
         for item in actions:
