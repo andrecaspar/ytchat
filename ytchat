@@ -5,7 +5,9 @@ from colorama import Fore, Back, Style
 msgFormat = '{author} {badges}| {msg}'
 badgesFormat = '[{badge}] '
 spacingFormat = '\n'
-nick = 'zsadroh'
+username = 'zsadroh'
+
+filterName = ''
 
 membersNameColor = Fore.GREEN
 modNameColor = Fore.BLUE
@@ -125,36 +127,35 @@ def Msg(item):
     key = list(item.keys())[0]
     if key == 'liveChatViewerEngagementMessageRenderer' and showWarning:
         return J(J(J(item,'g'),'r')[0],'x') + spacingFormat + '\n'
-    elif key == 'liveChatTextMessageRenderer':
-        item = J(item,'h')
-        author = J(item,'n')
+    item = J(item,'h')
+    author = J(item,'n')
 
-        badges = ''
-        try:
-            for badge in J(item,'u'):
-                badges = badges + badgesFormat.format(badge=J(badge,'w'))
-            if showMemberOnly and 'Member' not in badges:
-                return ''
-            if showBadgedNotMemberOnly and 'Member' in badges:
-                return ''
-        except KeyError:
-            if showBadgedOnly: return ''
+    if filterName != '' and author != filterName: return ''
 
-        if 'Member' in badges:
-            author = membersNameColor + author + Style.RESET_ALL
-        if 'Mod' in badges:
-            author = modNameColor + author + Style.RESET_ALL
+    badges = ''
+    try:
+        for badge in J(item,'u'):
+            badges = badges + badgesFormat.format(badge=J(badge,'w'))
+        if showMemberOnly and 'Member' not in badges:
+            return ''
+        if showBadgedNotMemberOnly and 'Member' in badges:
+            return ''
+    except KeyError:
+        if showBadgedOnly: return ''
 
-        msg = ''
-        for part in J(item,'r'):
-            msg = msg + Content(part)
-        msg = msgColor + msg + Style.RESET_ALL
-        msg =  msgFormat.format(author=author if showAuthor else '',badges=badges if showBadges else '',msg=msg if showMsg else '')
-        msg = msg.replace('@'+nick, Style.BRIGHT + Back.RED + '@'+nick + Style.RESET_ALL) + spacingFormat + '\n'
+    if 'Member' in badges:
+        author = membersNameColor + author + Style.RESET_ALL
+    if 'Mod' in badges:
+        author = modNameColor + author + Style.RESET_ALL
 
-        return msg # regex and hashtag support
-    else:
-        return ''
+    msg = ''
+    for part in J(item,'r'):
+        msg = msg + Content(part)
+    msg = msgColor + msg + Style.RESET_ALL
+    msg = msgFormat.format(author=author if showAuthor else '',badges=badges if showBadges else '',msg=msg if showMsg else '')
+    msg = msg.replace('@'+username, Style.BRIGHT + Back.RED + '@'+username + Style.RESET_ALL) + spacingFormat + '\n'
+
+    return msg # regex and hashtag support
 
 def ChatItem(item): # TODO
     key = list(item.keys())[0]
