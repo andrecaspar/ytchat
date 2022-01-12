@@ -7,6 +7,7 @@ badgesFormat = '[{badge}] '
 spacingFormat = '\n'
 username = 'zsadroh'
 
+filterMsg = ''
 filterName = ''
 
 membersNameColor = Fore.GREEN
@@ -151,9 +152,12 @@ def Msg(item):
     msg = ''
     for part in J(item,'r'):
         msg = msg + Content(part)
+    if filterMsg != '' and filterMsg not in msg: return ''
+
     msg = msgColor + msg + Style.RESET_ALL
     msg = msgFormat.format(author=author if showAuthor else '',badges=badges if showBadges else '',msg=msg if showMsg else '')
     msg = msg.replace('@'+username, Style.BRIGHT + Back.RED + '@'+username + Style.RESET_ALL) + spacingFormat + '\n'
+
 
     return msg # regex and hashtag support
 
