@@ -9,7 +9,7 @@ username = 'zsadroh'
 
 filterMsg = ''
 filterName = ''
-blockedUsers = ['']
+blockedUsers = ['','']
 
 msgColor = Fore.WHITE
 modNameColor = Fore.BLUE
@@ -50,6 +50,7 @@ def Request(url, cont='', msg=''):
 def J(j, opt):
     return {
         'x': lambda j:j['text'],
+        'M': lambda j:j['item'],
         'q': lambda j:j['choices'],
         'a': lambda j:j['actions'],
         't': lambda j:j['timeoutMs'],
@@ -61,6 +62,7 @@ def J(j, opt):
         'e': lambda j:j['emoji']['emojiId'],
         'd': lambda j:j['continuations'][0],
         'Q': lambda j:j['pollQuestion']['runs'],
+        'H': lambda j:j['headerSubtext']['runs'],
         'i': lambda j:j['timedContinuationData'],
         'n': lambda j:j['authorName']['simpleText'],
         'l': lambda j:j['addChatItemAction']['item'],
@@ -73,6 +75,7 @@ def J(j, opt):
         'g': lambda j:j['liveChatViewerEngagementMessageRenderer'],
         's': lambda j:j['addLiveChatTickerItemAction']['durationSec'],
         'v': lambda j:j['continuationContents']['liveChatContinuation'],
+        'S': lambda j:J['showItemEndpoint']['showLiveChatItemEndpoint']['renderer']['liveChatMembershipItemRenderer'],
         'k': lambda j:j['showLiveChatActionPanelAction']['panelToShow']['liveChatActionPanelRenderer']['contents']['pollRenderer'],
         'b': lambda j:j['addBannerToLiveChatCommand']['bannerRenderer']['liveChatBannerRenderer']['contents']['liveChatTextMessageRenderer']['message']['runs'],
         'p': lambda j:j['actionPanel']['liveChatMessageInputRenderer']['sendButton']['buttonRenderer']['serviceEndpoint']['sendLiveChatMessageEndpoint']['params']
@@ -92,7 +95,7 @@ def ContinuationData(i,json):
         j = J(j,'i')
     return j
 
-def Content(item):
+def TextContent(item):
     key = list(item.keys())[0]
     return {
         'text': lambda i:J(i,'x'),
@@ -110,20 +113,31 @@ def Banner(item):
         return ''
     msg = ''
     for part in J(item,'b'):
-        msg = msg + Content(part)
+        msg = msg + TextContent(part)
     return msg + spacingFormat + '\n'
 
 def Pool(item):
     entry = ''
     for part in J(J(item,'j'),'Q'):
-        entry = entry + Content(part)
+        entry = entry + TextContent(part)
     entry = entry + '\n'
     for part in J(item,'q'):
         string = ''
         for i in J(part,'0'):
-            string = string + Content(i)
+            string = string + TextContent(i)
         entry = entry + string + '\n'
     return entry
+
+def Ticker(item):
+    key = list(item.keys())[0]
+    if key == 'liveChatTickerSponsorItemRenderer':
+        item = J(item,'S')
+        string = 'New member: ' + J(item,'n') + '. '
+        for part in J(item,'H'):
+            string = string + TextContent(part)
+        return string
+    else:
+        return key
 
 def Msg(item):
     key = list(item.keys())[0]
@@ -147,21 +161,22 @@ def Msg(item):
         except KeyError:
             if showBadgedOnly: return ''
 
-        if 'Member' in badges:
+        if 'ember' in badges: # to also grab New member
             author = membersNameColor + author + Style.RESET_ALL
         if 'Mod' in badges:
             author = modNameColor + author + Style.RESET_ALL
 
         msg = ''
         for part in J(item,'r'):
-            msg = msg + Content(part)
+            msg = msg + TextContent(part)
         if filterMsg != '' and filterMsg not in msg: return ''
 
         msg = msgColor + msg + Style.RESET_ALL
         msg = msgFormat.format(author=author if showAuthor else '',badges=badges if showBadges else '',msg=msg if showMsg else '')
-        msg = msg.replace('@'+username, Style.BRIGHT + Back.RED + '@'+username + Style.RESET_ALL) + spacingFormat + '\n'
-
-        return msg # regex and hashtag support
+        msg = msg.replace('@'+username, Style.BRIGHT + Back.RED + '@'+username + Style.RESET_ALL)
+        msg = msg.replace('#'+username, Style.BRIGHT + Back.RED + '#'+username + Style.RESET_ALL)
+        # regex support?
+        return msg + spacingFormat + '\n'
     return ''
 
 def ChatItem(item): # TODO
@@ -175,6 +190,8 @@ def ChatItem(item): # TODO
             return Msg(J(item,'l'))
         case 'showLiveChatActionPanelAction':
             return Pool(J(item,'k'))
+        case 'addLiveChatTickerItemAction':
+            return Ticker(J(item,'M'))
         case 'liveChatViewerEngagementMessageRenderer':
             return item
         case 'showLiveChatTooltipCommand':
@@ -236,19 +253,19 @@ def Main():
 if __name__ == '__main__' and len(sys.argv) > 1:
     #curses.wrapper(Main)
     args = sys.argv[1:]
-    if ('-s' or '--send') in args:
-        SendMsg(args[0], args[args.index('-s') + 1])
+    if '-s' in args or '--send' in args:
+        SendMsg(args[0], args[args.index('-s') + 1] if '-s' in args else args[args.index('--send') + 1])
     else:
-        if ('-sp' or '--show-poll') in args:
+        if '-sp' in args or '--show-poll' in args:
             showPoll = True
-        if ('-sb' or '--show-banner') in args:
+        if '-sb' in args or '--show-banner' in args:
             showBanner = True
-        if ('-sw' or '--show-warning') in args:
+        if '-sw' in args or '--show-warning' in args:
             showWarning = True
-        if ('-fm' or '--filter-msg') in args:
+        if '-fm' in args or '--filter-msg' in args:
             filterMsg = args[args.index('-fm') + 1 if '-fm' in args else args.index('--filter-msg') + 1]
-        if ('-fn' or '--filter-name') in args:
-            filterName = args[args.index('-fn') + 1 if '-fm' in args else args.index('--filter-name') + 1]
+        if '-fn' in args or '--filter-name' in args:
+            filterName = args[args.index('-fn') + 1 if '-fn' in args else args.index('--filter-name') + 1]
         try:
             Main()
         except KeyboardInterrupt:
